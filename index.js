@@ -53,36 +53,36 @@ class WebSocketServer {
         const jsonObject = JSON.parse(data);
 
         if (jsonObject.type === 'chunk') {
-          // Verify chunk checksum
-          const crypto = require('crypto');
-          const sha256 = crypto.createHash('sha256').update(jsonObject.data).digest('hex');
+          console.log('Received chunk:', jsonObject.index, 'of', jsonObject.total);
           
-          if (sha256 === jsonObject.sha256) {
-            chunks[jsonObject.index] = jsonObject.data;
-            receivedChunks++;
-            
-            // Send acknowledgment
-            this.connectedSocket.send(JSON.stringify({
-              type: 'ack',
-              index: jsonObject.index,
-              status: 'success'
-            }));
+          // Store chunk regardless of checksum for now
+          chunks[jsonObject.index] = jsonObject.data;
+          receivedChunks++;
+          
+          // Send acknowledgment
+          this.connectedSocket.send(JSON.stringify({
+            type: 'ack',
+            index: jsonObject.index,
+            status: 'success'
+          }));
 
-            // If we've received all chunks, assemble the message
-            if (receivedChunks === expectedChunks) {
-              fullMessage = '';
-              for (let i = 0; i < expectedChunks; i++) {
-                fullMessage += chunks[i];
-              }
-              callback('answer', fullMessage);
+          // If we've received all chunks, assemble the message
+          if (receivedChunks === jsonObject.total) {
+            fullMessage = '';
+            for (let i = 0; i < jsonObject.total; i++) {
+              fullMessage += chunks[i];
             }
-          } else {
-            // Send failure acknowledgment
-            this.connectedSocket.send(JSON.stringify({
-              type: 'ack',
-              index: jsonObject.index,
-              status: 'fail'
-            }));
+            
+            // Verify complete message checksum
+            const crypto = require('crypto');
+            const completeSha256 = crypto.createHash('sha256').update(fullMessage).digest('hex');
+            
+            if (completeSha256 === jsonObject.completeSha256) {
+              callback('answer', fullMessage);
+            } else {
+              console.error('Complete message checksum mismatch');
+              callback('stop', 'Checksum error');
+            }
           }
         } else if (jsonObject.type === 'stop') {
           console.log('Received stop signal');

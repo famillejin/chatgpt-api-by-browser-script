@@ -175,8 +175,7 @@ class App {
                     const chunks = [];
                     for (let i = 0; i < textContent.length; i += chunkSize) {
                         const chunk = textContent.slice(i, i + chunkSize);
-                        const sha256 = await this.calculateSHA256(chunk);
-                        chunks.push({ chunk, sha256 });
+                        chunks.push({ chunk });
                     }
 
                     // Send chunks with retry logic
@@ -185,12 +184,15 @@ class App {
                         let success = false;
                         
                         while (retries < 5 && !success) {
+                            // Calculate complete message checksum
+                            const completeSha256 = await this.calculateSHA256(textContent);
+                            
                             const payload = JSON.stringify({
                                 type: 'chunk',
                                 index: i,
                                 total: chunks.length,
                                 data: chunks[i].chunk,
-                                md5: chunks[i].md5
+                                completeSha256: completeSha256
                             });
                             this.socket.send(payload);
 
