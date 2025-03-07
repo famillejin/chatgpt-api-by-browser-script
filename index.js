@@ -55,9 +55,9 @@ class WebSocketServer {
         if (jsonObject.type === 'chunk') {
           // Verify chunk checksum
           const crypto = require('crypto');
-          const md5 = crypto.createHash('md5').update(jsonObject.data).digest('hex');
+          const sha256 = crypto.createHash('sha256').update(jsonObject.data).digest('hex');
           
-          if (md5 === jsonObject.md5) {
+          if (sha256 === jsonObject.sha256) {
             chunks[jsonObject.index] = jsonObject.data;
             receivedChunks++;
             

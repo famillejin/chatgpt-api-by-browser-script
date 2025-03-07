@@ -175,8 +175,8 @@ class App {
                     const chunks = [];
                     for (let i = 0; i < textContent.length; i += chunkSize) {
                         const chunk = textContent.slice(i, i + chunkSize);
-                        const md5 = await this.calculateMD5(chunk);
-                        chunks.push({ chunk, md5 });
+                        const sha256 = await this.calculateSHA256(chunk);
+                        chunks.push({ chunk, sha256 });
                     }
 
                     // Send chunks with retry logic
@@ -223,9 +223,9 @@ class App {
         }
     }
 
-    async calculateMD5(str) {
+    async calculateSHA256(str) {
         const buffer = new TextEncoder().encode(str);
-        const hashBuffer = await crypto.subtle.digest('MD5', buffer);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
