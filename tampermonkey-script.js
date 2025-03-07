@@ -200,9 +200,6 @@ class App {
 
     connect() {
         this.socket = new WebSocket(WS_URL);
-        let messageChunks = [];
-        let totalChunks = 0;
-        let receivedChunks = 0;
         
         this.socket.onopen = () => {
             log('Server connected, can process requests now.');
@@ -213,30 +210,12 @@ class App {
             try {
                 const message = JSON.parse(event.data);
                 
-                if (message.type === 'header') {
-                    // Initialize for new message
-                    messageChunks = [];
-                    totalChunks = message.totalChunks;
-                    receivedChunks = 0;
-                } else if (message.type === 'chunk') {
-                    // Store chunk
-                    messageChunks[message.index] = message.data;
-                    receivedChunks++;
-                    
-                    // Check if all chunks received
-                    if (receivedChunks === totalChunks) {
-                        // Reassemble message
-                        const fullMessage = messageChunks.join('');
-                        const parsedMessage = JSON.parse(fullMessage);
-                        this.start(parsedMessage);
-                    }
+                if (message.type === 'request') {
+                    log('Received request from server:', message.data);
+                    this.start(message.data);
                 }
             } catch (error) {
                 console.error('Error processing message:', error);
-                // Reset state on error
-                messageChunks = [];
-                totalChunks = 0;
-                receivedChunks = 0;
             }
         };
         
@@ -249,21 +228,10 @@ class App {
                 this.connect();
             }, 2000);
         };
+        
         this.socket.onerror = (error) => {
-            log(
-                'Error: Server connection error, please check the server.',
-                error
-            );
+            log('Error: Server connection error, please check the server.', error);
             this.dom.innerHTML = '<div style="color: red;">API Error!</div>';
-        };
-        this.socket.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                log('Received data from server', data);
-                this.start(data);
-            } catch (error) {
-                log('Error: Failed to parse server message', error);
-            }
         };
     }
 

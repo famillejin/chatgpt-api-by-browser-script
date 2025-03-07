@@ -35,53 +35,32 @@ class WebSocketServer {
       return;
     }
 
-    // Send message in chunks with framing
-    const message = JSON.stringify(request);
-    const chunkSize = 16384; // 16KB per chunk
-    const totalChunks = Math.ceil(message.length / chunkSize);
-    
-    // Send header with total chunks
+    // Send the complete message at once
     this.connectedSocket.send(JSON.stringify({
-      type: 'header',
-      totalChunks: totalChunks
+      type: 'request',
+      data: request
     }));
-    
-    // Send message in chunks
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = message.slice(i * chunkSize, (i + 1) * chunkSize);
-      this.connectedSocket.send(JSON.stringify({
-        type: 'chunk',
-        index: i,
-        data: chunk
-      }));
-      // Add small delay between chunks
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
 
-    let text = ''
+    // Set up message handler
     const handleMessage = (message) => {
-      console.log('Raw message:', message);
-      let data = message;
-
       try {
-        if (message instanceof Buffer) {
-          data = utf8.decode(message.toString('utf8'));
-        }
+        const data = message instanceof Buffer ? utf8.decode(message.toString('utf8')) : message;
         const jsonObject = JSON.parse(data);
 
-        if (jsonObject.type === 'stop') {
+        if (jsonObject.type === 'answer') {
+          console.log('Received answer:', jsonObject.text);
+          callback('answer', jsonObject.text);
+        } else if (jsonObject.type === 'stop') {
+          console.log('Received stop signal');
           this.connectedSocket.off('message', handleMessage);
-          callback('stop', text);
-        } else if (jsonObject.type === 'answer')  {
-          console.log('answer:', jsonObject.text)
-          text = jsonObject.text
-          callback('answer', text);
+          callback('stop', '');
         }
       } catch (e) {
         console.error("Failed to parse message as JSON", e);
         console.error("Message data:", data);
       }
     };
+
     this.connectedSocket.on('message', handleMessage);
   }
 }
