@@ -38,11 +38,23 @@ class WebSocketServer {
 
     let text = ''
     const handleMessage = (message) => {
-      const data = message;
+      var data = message;
+
+      if (message instanceof Buffer) {
+        // Handle binary data
+        const decoder = new TextDecoder();
+        const textData = decoder.decode(message);
+        data = textData;
+        console.log('Decoded binary response:', textData);
+      }
+      const jsonObject = JSON.parse(data);
+        /*
+      console.log("jsonString:", data);
       const jsonString = data.toString('utf8');
       //const jsonString = data;
-      console.log("jsonString:", jsonString);
+      console.log("jsonString utf8:", jsonString);
       const jsonObject = JSON.parse(jsonString);
+      */
 
       if (jsonObject.type === 'stop') {
         this.connectedSocket.off('message', handleMessage);
@@ -97,8 +109,10 @@ app.post('/v1/chat/completions', async function (req, res) {
     },
     (type, response) => {
       try {
-        response = response.trim();
+        //console.log('base64 response:', response);
+        //response = atob(response).trim();
         console.log('response:', response);
+        console.log("Received text with length:", response.length);
         let deltaContent = '';
 
         if (response.length>0) {
@@ -162,7 +176,7 @@ app.post('/v1/chat/completions', async function (req, res) {
             
             // Send the final response without using streaming chunks
             res.send(result);
-            console.log('result:', result);
+            console.log('result:', result.choices[0].message.content);
           }
         } else if (deltaContent) { // Only send chunk if there's actual content
           if(stream) {
@@ -182,7 +196,7 @@ app.post('/v1/chat/completions', async function (req, res) {
           }
         }
         lastResponse = response;
-        console.log('result:', deltaContent);
+        console.log('result:', result.choices[0].message.content);
       } catch (error) {
         console.log('error', error)
       }

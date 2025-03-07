@@ -1,0 +1,19 @@
+# Cline's Learning Journal
+
+This file captures important patterns, preferences, and project intelligence that help Cline work more effectively.
+
+## Patterns Discovered
+
+## User Preferences
+
+## Project-Specific Patterns
+
+## Known Challenges
+
+## Evolution of Project Decisions
+
+## Tool Usage Patterns
+- `write_to_file`: Used to create and update memory bank files.
+- `read_file`: Used to read memory bank files.
+- `ask_followup_question`: Used to ask for clarification.
+- `replace_in_file`: Used to update memory bank files.
