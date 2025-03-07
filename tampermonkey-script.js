@@ -200,14 +200,52 @@ class App {
 
     connect() {
         this.socket = new WebSocket(WS_URL);
+        let messageBuffer = '';
+        let expectedLength = 0;
+        let isReadingLength = true;
+        
         this.socket.onopen = () => {
             log('Server connected, can process requests now.');
             this.dom.innerHTML = '<div style="color: green;">API Connected!</div>';
         };
+        
+        this.socket.onmessage = (event) => {
+            const data = event.data;
+            
+            if (isReadingLength) {
+                // First 8 bytes are the length prefix
+                expectedLength = parseInt(data, 16);
+                isReadingLength = false;
+                messageBuffer = '';
+            } else {
+                messageBuffer += data;
+                
+                if (messageBuffer.length >= expectedLength) {
+                    try {
+                        const message = JSON.parse(messageBuffer.slice(0, expectedLength));
+                        this.start(message);
+                        
+                        // Handle any remaining data (start of next message)
+                        const remainingData = messageBuffer.slice(expectedLength);
+                        if (remainingData.length >= 8) {
+                            expectedLength = parseInt(remainingData.slice(0, 8), 16);
+                            messageBuffer = remainingData.slice(8);
+                        } else {
+                            isReadingLength = true;
+                            messageBuffer = '';
+                        }
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
+                        // Reset state on error
+                        isReadingLength = true;
+                        messageBuffer = '';
+                    }
+                }
+            }
+        };
+        
         this.socket.onclose = () => {
-            log(
-                'Error: The server connection has been disconnected, the request cannot be processed.'
-            );
+            log('Error: The server connection has been disconnected, the request cannot be processed.');
             this.dom.innerHTML = '<div style="color: red;">API Disconnected!</div>';
 
             setTimeout(() => {

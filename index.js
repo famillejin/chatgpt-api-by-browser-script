@@ -35,7 +35,11 @@ class WebSocketServer {
       return;
     }
 
-    this.connectedSocket.send(JSON.stringify(request));
+    // Send message with length prefix
+    const message = JSON.stringify(request);
+    const lengthPrefix = Buffer.from(message.length.toString(16).padStart(8, '0'), 'utf8');
+    this.connectedSocket.send(lengthPrefix);
+    this.connectedSocket.send(message);
 
     let text = ''
     const handleMessage = (message) => {
