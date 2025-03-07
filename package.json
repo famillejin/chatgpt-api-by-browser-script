@@ -9,8 +9,7 @@
   "dependencies": {
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "ws": "^8.13.0"
+    "express": "^4.18.2"
   },
   "repository": {
     "type": "git",
@@ -21,5 +20,8 @@
   "bugs": {
     "url": "https://github.com/zsodur/chatgpt-api-by-browser-script/issues"
   },
-  "homepage": "https://github.com/zsodur/chatgpt-api-by-browser-script#readme"
+  "homepage": "https://github.com/zsodur/chatgpt-api-by-browser-script#readme",
+  "devDependencies": {
+    "ws": "^8.18.1"
+  }
 }

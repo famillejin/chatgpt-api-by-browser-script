@@ -40,6 +40,8 @@ class WebSocketServer {
     const handleMessage = (message) => {
       const data = message;
       const jsonString = data.toString('utf8');
+      //const jsonString = data;
+      console.log("jsonString:", jsonString);
       const jsonObject = JSON.parse(jsonString);
 
       if (jsonObject.type === 'stop') {
@@ -68,9 +70,11 @@ app.post('/v1/chat/completions', async function (req, res) {
   const { messages, model, stream, newChat = true  } = req.body;
 
   if(stream){
+    console.log('streaming');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Transfer-Encoding', 'chunked');
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
   }
 
@@ -93,38 +97,90 @@ app.post('/v1/chat/completions', async function (req, res) {
     },
     (type, response) => {
       try {
-        response = response.trim()
+        response = response.trim();
         let deltaContent = '';
-        if (lastResponse) {
-          const index = response.indexOf(lastResponse);
-          deltaContent = index >= 0 ? response.slice(index + lastResponse.length) : response;
+
+        if (response.length < lastResponse.length) {
+          // If response is shorter than lastResponse, something went wrong
+          // Use the full response as delta
+          deltaContent = response;
+        } else if (lastResponse) {
+          // Find common prefix length
+          let commonLength = 0;
+          while (commonLength < lastResponse.length && 
+                 response[commonLength] === lastResponse[commonLength]) {
+            commonLength++;
+          }
+          deltaContent = response.slice(commonLength);
         } else {
           deltaContent = response;
         }
-        const result = {
-          choices: [{
-              message: { content: response },
-              delta: { content: deltaContent }
-          }]
-        }
-        lastResponse = response
+
         if(type === 'stop'){
           if(stream) {
-            res.write(`id: ${Date.now()}\n`);
-            res.write(`event: event\n`);
+            // Make sure we send the final chunk if there's content remaining
+            if (response !== lastResponse) {
+              const chunk = {
+                id: 'chatcmpl-' + Date.now(),
+                object: 'chat.completion.chunk',
+                created: Math.floor(Date.now() / 1000),
+                model: model,
+                choices: [{
+                  index: 0,
+                  delta: { content: deltaContent },
+                  finish_reason: null
+                }]
+              };
+              res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            }
+            
+            // Send the final chunk with finish_reason: "stop"
+            const finalChunk = {
+              id: 'chatcmpl-' + Date.now(),
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: model,
+              choices: [{
+                index: 0,
+                delta: {},
+                finish_reason: 'stop'
+              }]
+            };
+            res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
             res.write('data: [DONE]\n\n');
             res.end();
           } else {
-            res.send(result);
+            res.json({
+              id: 'chatcmpl-' + Date.now(),
+              object: 'chat.completion',
+              created: Math.floor(Date.now() / 1000),
+              model: model,
+              choices: [{
+                index: 0,
+                message: { role: 'assistant', content: response },
+                finish_reason: 'stop'
+              }]
+            });
           }
-        } else {
+        } else if (deltaContent) { // Only send chunk if there's actual content
           if(stream) {
-            res.write(`id: ${Date.now()}\n`);
-            res.write(`event: event\n`);
-            res.write(`data: ${JSON.stringify(result)}\n\n`);
+            const chunk = {
+              id: 'chatcmpl-' + Date.now(),
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: model,
+              choices: [{
+                index: 0,
+                delta: { content: deltaContent },
+                finish_reason: null
+              }]
+            };
+            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            console.log('chunk:', chunk);
           }
         }
-        console.log('result', result)
+        lastResponse = response;
+        console.log('result:', deltaContent);
       } catch (error) {
         console.log('error', error)
       }

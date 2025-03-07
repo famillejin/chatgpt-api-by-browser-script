@@ -113,10 +113,10 @@ class App {
                     }
                 }
             } else {
-                                        // Debounce the checkForCopyButton call
-                        checkForCopyTimeout = setTimeout(debounce(() => {
-                            this.checkForCopyButton();
-                        }, 300), 300);
+                // Debounce the checkForCopyButton call
+                checkForCopyTimeout = setTimeout(debounce(() => {
+                    this.checkForCopyButton();
+                }, 300), 300);
             }
 
             // Check for the "I prefer this response" button
@@ -134,85 +134,83 @@ class App {
         this.observer.observe(document.body, observerConfig);
     }
 
-async checkForCopyButton() {
-    console.log("checkForCopyButton called");
-    const copyButton = document.querySelector('button[data-testid="copy-turn-action-button"]');
-    if (copyButton) {
-        console.log("Copy button appeared");
+    async checkForCopyButton() {
+        console.log("checkForCopyButton called");
+        const copyButton = document.querySelector('button[data-testid="copy-turn-action-button"]');
+        if (copyButton) {
+            console.log("Copy button appeared");
 
-        try {
-            // Alternative method 1: Get text directly from response elements
-            const responseElements = document.querySelectorAll('.markdown');
-            const responses = Array.from(responseElements).map(el => getTextFromNode(el)).filter(text => text.trim() !== '');
+            try {
+                // Extract the full HTML content from the relevant message container which is the last instance of conversation-turn class on the page
+                const messageContainers = document.querySelectorAll('.group\\/conversation-turn');
+                let messageContainer = messageContainers[messageContainers.length - 1];
+                if (messageContainer) {
+                    //work on a copy of the message container, do not modify the original
+                    messageContainer = messageContainer.cloneNode(true);
+                    // Get all code blocks
+                    const codeBlocks = messageContainer.querySelectorAll('code');
+                    const codeBlocksArray = Array.from(codeBlocks);
 
-            if (responses.length > 0) {
-                const lastResponse = responses[responses.length - 1];
-                console.log("Extracted response:", lastResponse);
+                    // Replace code blocks with markers
+                    codeBlocksArray.forEach((block, index) => {
+                        block.dataset.originalContent = block.innerHTML;
+                        block.innerHTML = `[CODE_BLOCK_${index}]`;
+                    });
 
-                this.lastText = lastResponse;
-                this.socket.send(
-                    JSON.stringify({
-                        type: 'answer',
-                        text: lastResponse,
-                    })
-                );
+                    // Extract the text content from the message container
+                    let textContent = getTextFromNode(messageContainer);
+
+                    // Restore code blocks content
+                    // format the content so LLM UI can interprets it correctly as code block
+                    codeBlocksArray.forEach((block, index) => {
+                        const decoder = new DOMParser().parseFromString(block.dataset.originalContent ?? '', 'text/html');
+                        const decodedContent = decoder.documentElement.textContent;
+                        textContent = textContent.replace(`[CODE_BLOCK_${index}]`, "\n```\n" + decodedContent + "```\n");
+                    });
+
+                    console.log("Extracted text:", textContent);
+
+
+                    //send the message using JSON.stringify for proper escaping
+                    this.sendInChunks(textContent);
+
+                }
 
                 this.observer.disconnect();
-
-                if (!this.stop) {
-                    this.stop = true;
-                    this.socket.send(
-                        JSON.stringify({
-                            type: 'stop',
-                        })
-                    );
-                }
-                return;
-            }
-
-            // Alternative method 2: Try clipboard with explicit error handling
-            try {
-                copyButton.click();
-                await sleep(500);
-
-                const clipboardText = await navigator.clipboard.readText();
-                console.log("Clipboard content:", clipboardText);
-
+                this.stop = true;
                 this.socket.send(
                     JSON.stringify({
-                        type: 'answer',
-                        text: clipboardText,
+                        type: 'stop',
                     })
                 );
-            } catch (clipboardError) {
-                console.error("Clipboard access failed:", clipboardError);
-
-                // Alternative method 3: Use window selection
-                const selectedText = window.getSelection().toString();
-                if (selectedText) {
-                    console.log("Selected text:", selectedText);
-                    this.socket.send(
-                        JSON.stringify({
-                            type: 'answer',
-                            text: selectedText,
-                        })
-                    );
-                }
+            } catch (error) {
+                console.error("Error in checkForCopyButton:", error);
             }
-
-            this.observer.disconnect();
-            this.stop = true;
-            this.socket.send(
-                JSON.stringify({
-                    type: 'stop',
-                })
-            );
-
-        } catch (error) {
-            console.error("Error in checkForCopyButton:", error);
         }
     }
-}
+
+    sendInChunks(message) {
+        const chunkSize = 1024; // Adjust the chunk size as needed
+        //pour une raison inconnue, parfois il manque un bout de texte
+        //on va donc générer un texte de 1024 caractères à ajouter à la fin du message
+        //pour s'assurer que le message est bien complet
+        const paddingLength = chunkSize;
+        const paddedMessage = message + ' '.repeat(paddingLength);
+        console.log("paddedMessage=", paddedMessage);
+        for (let i = 0; i < paddedMessage.length; i += chunkSize) {
+            const chunk = paddedMessage.slice(i, i + chunkSize);
+            console.log("chunk=", chunk);
+
+            //send the chunk to server
+            this.socket.send(
+                JSON.stringify({
+                    type: 'answer',
+                    text: chunk
+                })
+            );
+        }
+    }
+
     sendHeartbeat() {
         if (this.socket.readyState === WebSocket.OPEN) {
             log('Sending heartbeat');
