@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT API By Browser Script
 // @namespace    http://tampermonkey.net/
-// @version      15
+// @version      16
 // @match        https://chatgpt.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=openai.com
 // @grant        GM_webRequest
@@ -135,7 +135,7 @@ class App {
     }
 
     async checkForCopyButton() {
-        console.log("checkForCopyButton called");
+        console.log("checkForCopyButton called - v16");
         const copyButton = document.querySelector('button[data-testid="copy-turn-action-button"]');
         if (copyButton) {
             console.log("Copy button appeared");
@@ -170,25 +170,81 @@ class App {
 
                     console.log("Extracted text:", textContent);
 
-                    const payload = JSON.stringify({
-                        type: 'answer',
-                        text: textContent + ' '.repeat(1500),
-                    });
-                    this.socket.send(payload);
+                    // Split text into chunks and send with checksums
+                    const chunkSize = 256;
+                    const chunks = [];
+                    for (let i = 0; i < textContent.length; i += chunkSize) {
+                        const chunk = textContent.slice(i, i + chunkSize);
+                        const md5 = await this.calculateMD5(chunk);
+                        chunks.push({ chunk, md5 });
+                    }
 
+                    // Send chunks with retry logic
+                    for (let i = 0; i < chunks.length; i++) {
+                        let retries = 0;
+                        let success = false;
+                        
+                        while (retries < 5 && !success) {
+                            const payload = JSON.stringify({
+                                type: 'chunk',
+                                index: i,
+                                total: chunks.length,
+                                data: chunks[i].chunk,
+                                md5: chunks[i].md5
+                            });
+                            this.socket.send(payload);
+
+                            // Wait for acknowledgment
+                            const ack = await this.waitForAck(i);
+                            if (ack === 'success') {
+                                success = true;
+                            } else {
+                                retries++;
+                                console.log(`Retrying chunk ${i}, attempt ${retries}`);
+                            }
+                        }
+
+                        if (!success) {
+                            throw new Error(`Failed to send chunk ${i} after 5 retries`);
+                        }
+                    }
+
+                    // Send final stop message
+                    this.socket.send(JSON.stringify({
+                        type: 'stop'
+                    }));
                 }
 
                 this.observer.disconnect();
                 this.stop = true;
-                this.socket.send(
-                    JSON.stringify({
-                        type: 'stop',
-                    })
-                );
             } catch (error) {
                 console.error("Error in checkForCopyButton:", error);
             }
         }
+    }
+
+    async calculateMD5(str) {
+        const buffer = new TextEncoder().encode(str);
+        const hashBuffer = await crypto.subtle.digest('MD5', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    waitForAck(index) {
+        return new Promise((resolve) => {
+            const handler = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'ack' && message.index === index) {
+                        this.socket.removeEventListener('message', handler);
+                        resolve(message.status);
+                    }
+                } catch (error) {
+                    // Ignore parsing errors
+                }
+            };
+            this.socket.addEventListener('message', handler);
+        });
     }
 
     sendHeartbeat() {

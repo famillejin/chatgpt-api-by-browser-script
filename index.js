@@ -41,22 +41,56 @@ class WebSocketServer {
       data: request
     }));
 
+    let fullMessage = '';
+    let expectedChunks = 0;
+    let receivedChunks = 0;
+    const chunks = {};
+
     // Set up message handler
-    const handleMessage = (message) => {
+    const handleMessage = async (message) => {
       try {
         const data = message instanceof Buffer ? utf8.decode(message.toString('utf8')) : message;
         const jsonObject = JSON.parse(data);
 
-        if (jsonObject.type === 'answer') {
-          console.log('Received answer:', jsonObject.text);
-          callback('answer', jsonObject.text);
+        if (jsonObject.type === 'chunk') {
+          // Verify chunk checksum
+          const crypto = require('crypto');
+          const md5 = crypto.createHash('md5').update(jsonObject.data).digest('hex');
+          
+          if (md5 === jsonObject.md5) {
+            chunks[jsonObject.index] = jsonObject.data;
+            receivedChunks++;
+            
+            // Send acknowledgment
+            this.connectedSocket.send(JSON.stringify({
+              type: 'ack',
+              index: jsonObject.index,
+              status: 'success'
+            }));
+
+            // If we've received all chunks, assemble the message
+            if (receivedChunks === expectedChunks) {
+              fullMessage = '';
+              for (let i = 0; i < expectedChunks; i++) {
+                fullMessage += chunks[i];
+              }
+              callback('answer', fullMessage);
+            }
+          } else {
+            // Send failure acknowledgment
+            this.connectedSocket.send(JSON.stringify({
+              type: 'ack',
+              index: jsonObject.index,
+              status: 'fail'
+            }));
+          }
         } else if (jsonObject.type === 'stop') {
           console.log('Received stop signal');
           this.connectedSocket.off('message', handleMessage);
           callback('stop', '');
         }
       } catch (e) {
-        console.error("Failed to parse message as JSON", e);
+        console.error("Failed to process message:", e);
         console.error("Message data:", data);
       }
     };
