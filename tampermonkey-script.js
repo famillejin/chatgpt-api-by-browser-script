@@ -165,45 +165,10 @@ class App {
                     codeBlocksArray.forEach((block, index) => {
                         const decoder = new DOMParser().parseFromString(block.dataset.originalContent ?? '', 'text/html');
                         const decodedContent = decoder.documentElement.textContent;
-                        textContent = textContent.replace(`[CODE_BLOCK_${index}]`, decodedContent);
+                        textContent = textContent.replace(`[CODE_BLOCK_${index}]`, "\n```\n" + decodedContent + "```\n");
                     });
 
-                    // Split text into code and non-code parts
-                    const codeParts = [];
-                    const nonCodeParts = [];
-                    let currentText = textContent;
-                    
-                    // Extract all code blocks
-                    const codeBlockRegex = /```[\s\S]*?```/g;
-                    let match;
-                    let lastIndex = 0;
-                    
-                    while ((match = codeBlockRegex.exec(textContent)) !== null) {
-                        // Add text before code block
-                        if (match.index > lastIndex) {
-                            nonCodeParts.push(textContent.slice(lastIndex, match.index).trim());
-                        }
-                        // Add code block
-                        codeParts.push(match[0]);
-                        lastIndex = match.index + match[0].length;
-                    }
-                    
-                    // Add remaining text after last code block
-                    if (lastIndex < textContent.length) {
-                        nonCodeParts.push(textContent.slice(lastIndex).trim());
-                    }
-
-                    // Combine parts with clear separation
-                    const formattedText = [];
-                    if (nonCodeParts.length > 0) {
-                        formattedText.push(nonCodeParts.join('\n\n'));
-                    }
-                    if (codeParts.length > 0) {
-                        formattedText.push(codeParts.join('\n\n'));
-                    }
-
-                    textContent = formattedText.join('\n\n');
-                    console.log("Extracted and formatted text:", textContent);
+                    console.log("Extracted text:", textContent);
 
                     const payload = JSON.stringify({
                         type: 'answer',
