@@ -55,32 +55,6 @@ function debounce(func, delay) {
     };
 }
 
-function sanitizeTextForWebSocket(text) {
-  if (!text) return text;
-
-  return text
-    // Remove common control characters (0x00-0x1F except for \t, \n, \r)
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-
-    // Remove zero-width characters
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-
-    // Remove directional formatting characters
-    .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
-
-    // Remove other potentially problematic Unicode control characters
-    .replace(/[\u2028\u2029\u0085]/g, '')
-
-    // Remove deletion characters
-    .replace(/[\u007F\u2421]/g, '')
-
-    // Remove other special whitespace characters that aren't standard spaces
-    .replace(/[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
-
-    // Optional: Replace backspace characters which can "delete" previous characters
-    .replace(/[\u0008]/g, '');
-}
-
 class App {
     constructor() {
         this.socket = null;
@@ -196,55 +170,11 @@ class App {
 
                     console.log("Extracted text:", textContent);
 
-                    //const cleanedText = sanitizeTextForWebSocket(textContent.replace(/[\x00-\x1F\x7F-\x9F]/g, ''));
-
-                    const cleanedText = sanitizeTextForWebSocket(textContent);
-                    console.log("Sending text with length:", cleanedText.length);
-                    console.log("Sending cleaned texst:", cleanedText);
-
-
-                    const encoder = new TextEncoder();
                     const payload = JSON.stringify({
                         type: 'answer',
-                        text: cleanedText+' '.repeat(1500),
+                        text: textContent + ' '.repeat(1500),
                     });
-                    const binaryData = encoder.encode(payload);
-                    this.socket.send(binaryData);
-
-/*
-                    // Send the message to the server
-                    // Ensure text is properly encoded
-                    const jsonObj = {
-                        type: 'answer',
-                        text: cleanedText,
-                        length: cleanedText.length
-                    };
-
-                    // Convert to properly escaped JSON string with UTF-8 handling
-                    const jsonString = JSON.stringify(jsonObj, (key, value) => {
-                        if (typeof value === 'string') {
-                            // Explicitly handle problematic Unicode sequences
-                            return value.replace(/[\uD800-\uDFFF]/g, (char) => {
-                                return '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0');
-                            });
-                        }
-                        return value;
-                    });
-                    // Send the properly escaped string
-                    this.socket.send(jsonString);
-*/
-                    /*
-                    this.socket.send(
-                        JSON.stringify({
-                            type: 'answer',
-                            text: cleanedText,
-                            length: cleanedText.length
-                        })
-                    );
-*/
-
-                    //send the message in chunks
-                    //this.sendInChunks(textContent);
+                    this.socket.send(payload);
 
                 }
 
@@ -258,28 +188,6 @@ class App {
             } catch (error) {
                 console.error("Error in checkForCopyButton:", error);
             }
-        }
-    }
-
-    sendInChunks(message) {
-        const chunkSize = 1024; // Adjust the chunk size as needed
-        //pour une raison inconnue, parfois il manque un bout de texte
-        //on va donc générer un texte de 1024 caractères à ajouter à la fin du message
-        //pour s'assurer que le message est bien complet
-        const paddingLength = 0;
-        const paddedMessage = message + ' '.repeat(paddingLength);
-        console.log("paddedMessage=", paddedMessage);
-        for (let i = 0; i < paddedMessage.length; i += chunkSize) {
-            const chunk = paddedMessage.slice(i, i + chunkSize);
-            console.log("chunk=", chunk);
-
-            //send the chunk to server
-            this.socket.send(
-                JSON.stringify({
-                    type: 'answer',
-                    text: chunk
-                })
-            );
         }
     }
 

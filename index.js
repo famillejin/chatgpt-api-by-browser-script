@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const utf8 = require('utf8');
 
 const WS_PORT = 8765;
 const HTTP_PORT = 8766;
@@ -38,31 +39,26 @@ class WebSocketServer {
 
     let text = ''
     const handleMessage = (message) => {
-      var data = message;
+      console.log('Raw message:', message);
+      let data = message;
 
-      if (message instanceof Buffer) {
-        // Handle binary data
-        const decoder = new TextDecoder();
-        const textData = decoder.decode(message);
-        data = textData;
-        console.log('Decoded binary response:', textData);
-      }
-      const jsonObject = JSON.parse(data);
-        /*
-      console.log("jsonString:", data);
-      const jsonString = data.toString('utf8');
-      //const jsonString = data;
-      console.log("jsonString utf8:", jsonString);
-      const jsonObject = JSON.parse(jsonString);
-      */
+      try {
+        if (message instanceof Buffer) {
+          data = utf8.decode(message.toString('utf8'));
+        }
+        const jsonObject = JSON.parse(data);
 
-      if (jsonObject.type === 'stop') {
-        this.connectedSocket.off('message', handleMessage);
-        callback('stop', text);
-      } else if (jsonObject.type === 'answer')  {
-        console.log('answer:', jsonObject.text)
-        text = jsonObject.text
-        callback('answer', text);
+        if (jsonObject.type === 'stop') {
+          this.connectedSocket.off('message', handleMessage);
+          callback('stop', text);
+        } else if (jsonObject.type === 'answer')  {
+          console.log('answer:', jsonObject.text)
+          text = jsonObject.text
+          callback('answer', text);
+        }
+      } catch (e) {
+        console.error("Failed to parse message as JSON", e);
+        console.error("Message data:", data);
       }
     };
     this.connectedSocket.on('message', handleMessage);
@@ -192,11 +188,9 @@ app.post('/v1/chat/completions', async function (req, res) {
               }]
             };
             res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-            console.log('chunk:', chunk);
           }
         }
         lastResponse = response;
-        console.log('result:', result.choices[0].message.content);
       } catch (error) {
         console.log('error', error)
       }
