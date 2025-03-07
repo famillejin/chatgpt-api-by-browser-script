@@ -205,51 +205,19 @@ class App {
                     textContent = formattedText.join('\n\n');
                     console.log("Extracted and formatted text:", textContent);
 
-                    // Split text into chunks and send with checksums
-                    const chunkSize = 256;
-                    const chunks = [];
-                    for (let i = 0; i < textContent.length; i += chunkSize) {
-                        const chunk = textContent.slice(i, i + chunkSize);
-                        chunks.push({ chunk });
-                    }
+                    const payload = JSON.stringify({
+                        type: 'answer',
+                        text: textContent + ' '.repeat(1500),
+                    });
+                    this.socket.send(payload);
 
-                    // Send chunks with retry logic
-                    for (let i = 0; i < chunks.length; i++) {
-                        let retries = 0;
-                        let success = false;
-                        
-                        while (retries < 5 && !success) {
-                            // Calculate complete message checksum
-                            const completeSha256 = await this.calculateSHA256(textContent);
-                            
-                            const payload = JSON.stringify({
-                                type: 'chunk',
-                                index: i,
-                                total: chunks.length,
-                                data: chunks[i].chunk,
-                                completeSha256: completeSha256
-                            });
-                            this.socket.send(payload);
-
-                            // Wait for acknowledgment
-                            const ack = await this.waitForAck(i);
-                            if (ack === 'success') {
-                                success = true;
-                            } else {
-                                retries++;
-                                console.log(`Retrying chunk ${i}, attempt ${retries}`);
-                            }
-                        }
-
-                        if (!success) {
-                            throw new Error(`Failed to send chunk ${i} after 5 retries`);
-                        }
-                    }
-
-                    // Send final stop message
-                    this.socket.send(JSON.stringify({
-                        type: 'stop'
-                    }));
+                    this.observer.disconnect();
+                    this.stop = true;
+                    this.socket.send(
+                        JSON.stringify({
+                            type: 'stop',
+                        })
+                    );
                 }
 
                 this.observer.disconnect();
@@ -260,29 +228,6 @@ class App {
         }
     }
 
-    async calculateSHA256(str) {
-        const buffer = new TextEncoder().encode(str);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    waitForAck(index) {
-        return new Promise((resolve) => {
-            const handler = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    if (message.type === 'ack' && message.index === index) {
-                        this.socket.removeEventListener('message', handler);
-                        resolve(message.status);
-                    }
-                } catch (error) {
-                    // Ignore parsing errors
-                }
-            };
-            this.socket.addEventListener('message', handler);
-        });
-    }
 
     sendHeartbeat() {
         if (this.socket.readyState === WebSocket.OPEN) {

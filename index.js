@@ -52,38 +52,9 @@ class WebSocketServer {
         const data = message instanceof Buffer ? utf8.decode(message.toString('utf8')) : message;
         const jsonObject = JSON.parse(data);
 
-        if (jsonObject.type === 'chunk') {
-          console.log('Received chunk:', jsonObject.index, 'of', jsonObject.total);
-          
-          // Store chunk regardless of checksum for now
-          chunks[jsonObject.index] = jsonObject.data;
-          receivedChunks++;
-          
-          // Send acknowledgment
-          this.connectedSocket.send(JSON.stringify({
-            type: 'ack',
-            index: jsonObject.index,
-            status: 'success'
-          }));
-
-          // If we've received all chunks, assemble the message
-          if (receivedChunks === jsonObject.total) {
-            fullMessage = '';
-            for (let i = 0; i < jsonObject.total; i++) {
-              fullMessage += chunks[i];
-            }
-            
-            // Verify complete message checksum
-            const crypto = require('crypto');
-            const completeSha256 = crypto.createHash('sha256').update(fullMessage).digest('hex');
-            
-            if (completeSha256 === jsonObject.completeSha256) {
-              callback('answer', fullMessage);
-            } else {
-              console.error('Complete message checksum mismatch');
-              callback('stop', 'Checksum error');
-            }
-          }
+        if (jsonObject.type === 'answer') {
+          console.log('Received answer:', jsonObject.text);
+          callback('answer', jsonObject.text);
         } else if (jsonObject.type === 'stop') {
           console.log('Received stop signal');
           this.connectedSocket.off('message', handleMessage);
