@@ -200,9 +200,9 @@ class App {
 
     connect() {
         this.socket = new WebSocket(WS_URL);
-        let messageBuffer = '';
-        let expectedLength = 0;
-        let isReadingLength = true;
+        let messageChunks = [];
+        let totalChunks = 0;
+        let receivedChunks = 0;
         
         this.socket.onopen = () => {
             log('Server connected, can process requests now.');
@@ -210,37 +210,33 @@ class App {
         };
         
         this.socket.onmessage = (event) => {
-            const data = event.data;
-            
-            if (isReadingLength) {
-                // First 8 bytes are the length prefix
-                expectedLength = parseInt(data, 16);
-                isReadingLength = false;
-                messageBuffer = '';
-            } else {
-                messageBuffer += data;
+            try {
+                const message = JSON.parse(event.data);
                 
-                if (messageBuffer.length >= expectedLength) {
-                    try {
-                        const message = JSON.parse(messageBuffer.slice(0, expectedLength));
-                        this.start(message);
-                        
-                        // Handle any remaining data (start of next message)
-                        const remainingData = messageBuffer.slice(expectedLength);
-                        if (remainingData.length >= 8) {
-                            expectedLength = parseInt(remainingData.slice(0, 8), 16);
-                            messageBuffer = remainingData.slice(8);
-                        } else {
-                            isReadingLength = true;
-                            messageBuffer = '';
-                        }
-                    } catch (error) {
-                        console.error('Error parsing message:', error);
-                        // Reset state on error
-                        isReadingLength = true;
-                        messageBuffer = '';
+                if (message.type === 'header') {
+                    // Initialize for new message
+                    messageChunks = [];
+                    totalChunks = message.totalChunks;
+                    receivedChunks = 0;
+                } else if (message.type === 'chunk') {
+                    // Store chunk
+                    messageChunks[message.index] = message.data;
+                    receivedChunks++;
+                    
+                    // Check if all chunks received
+                    if (receivedChunks === totalChunks) {
+                        // Reassemble message
+                        const fullMessage = messageChunks.join('');
+                        const parsedMessage = JSON.parse(fullMessage);
+                        this.start(parsedMessage);
                     }
                 }
+            } catch (error) {
+                console.error('Error processing message:', error);
+                // Reset state on error
+                messageChunks = [];
+                totalChunks = 0;
+                receivedChunks = 0;
             }
         };
         

@@ -35,11 +35,28 @@ class WebSocketServer {
       return;
     }
 
-    // Send message with length prefix
+    // Send message in chunks with framing
     const message = JSON.stringify(request);
-    const lengthPrefix = Buffer.from(message.length.toString(16).padStart(8, '0'), 'utf8');
-    this.connectedSocket.send(lengthPrefix);
-    this.connectedSocket.send(message);
+    const chunkSize = 16384; // 16KB per chunk
+    const totalChunks = Math.ceil(message.length / chunkSize);
+    
+    // Send header with total chunks
+    this.connectedSocket.send(JSON.stringify({
+      type: 'header',
+      totalChunks: totalChunks
+    }));
+    
+    // Send message in chunks
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = message.slice(i * chunkSize, (i + 1) * chunkSize);
+      this.connectedSocket.send(JSON.stringify({
+        type: 'chunk',
+        index: i,
+        data: chunk
+      }));
+      // Add small delay between chunks
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
 
     let text = ''
     const handleMessage = (message) => {
