@@ -190,11 +190,11 @@ class App {
     }
 
     sendInChunks(message) {
-        const chunkSize = 1024; // Adjust the chunk size as needed
+        const chunkSize = 102400; // Adjust the chunk size as needed
         //pour une raison inconnue, parfois il manque un bout de texte
         //on va donc générer un texte de 1024 caractères à ajouter à la fin du message
         //pour s'assurer que le message est bien complet
-        const paddingLength = chunkSize;
+        const paddingLength = 1024;
         const paddedMessage = message + ' '.repeat(paddingLength);
         console.log("paddedMessage=", paddedMessage);
         for (let i = 0; i < paddedMessage.length; i += chunkSize) {

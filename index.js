@@ -98,8 +98,17 @@ app.post('/v1/chat/completions', async function (req, res) {
     (type, response) => {
       try {
         response = response.trim();
+        console.log('response:', response);
         let deltaContent = '';
 
+        if (response.length>0) {
+           result = {
+            choices: [{
+                message: { content: response },
+                delta: { content: deltaContent }
+            }]
+          }
+        }
         if (response.length < lastResponse.length) {
           // If response is shorter than lastResponse, something went wrong
           // Use the full response as delta
@@ -115,7 +124,7 @@ app.post('/v1/chat/completions', async function (req, res) {
         } else {
           deltaContent = response;
         }
-
+        //lastResponse = response;
         if(type === 'stop'){
           if(stream) {
             // Make sure we send the final chunk if there's content remaining
@@ -150,17 +159,10 @@ app.post('/v1/chat/completions', async function (req, res) {
             res.write('data: [DONE]\n\n');
             res.end();
           } else {
-            res.json({
-              id: 'chatcmpl-' + Date.now(),
-              object: 'chat.completion',
-              created: Math.floor(Date.now() / 1000),
-              model: model,
-              choices: [{
-                index: 0,
-                message: { role: 'assistant', content: response },
-                finish_reason: 'stop'
-              }]
-            });
+            
+            // Send the final response without using streaming chunks
+            res.send(result);
+            console.log('result:', result);
           }
         } else if (deltaContent) { // Only send chunk if there's actual content
           if(stream) {
