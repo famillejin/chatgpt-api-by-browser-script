@@ -80,14 +80,30 @@ class WebSocketServer {
   }
 }
 
+// Create WebSocket server instance
 const webSocketServer = new WebSocketServer();
 
+// Create Express app instance
 const app = express();
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(cors());
+// Configure middleware
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cors({
+  origin: '*',
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
 
+// Handle preflight requests
+app.options('/v1/chat/completions', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
+// Main API endpoint
 app.post('/v1/chat/completions', async function (req, res) {
 
   const { messages, model, stream, newChat = true  } = req.body;
@@ -213,6 +229,32 @@ app.post('/v1/chat/completions', async function (req, res) {
   );
 });
 
-app.listen(HTTP_PORT, function () {
-  console.log(`Application example, access address is http://localhost:${HTTP_PORT}/v1/chat/completions`);
+// Start HTTP server
+const server = app.listen(HTTP_PORT, function () {
+  console.log(`API server running at http://localhost:${HTTP_PORT}/v1/chat/completions`);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${HTTP_PORT} is already in use`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', error);
+  }
+});
+
+// Handle process termination
+process.on('SIGTERM', () => {
+  server.close(() => {
+    console.log('Server gracefully terminated');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  server.close(() => {
+    console.log('Server gracefully terminated');
+    process.exit(0);
+  });
 });
