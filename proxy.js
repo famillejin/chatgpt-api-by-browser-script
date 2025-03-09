@@ -1,7 +1,8 @@
-const http = require('http');
-const https = require('https');
-const { URL } = require('url');
+import http from 'http';
+import https from 'https';
+import { URL } from 'url';
 
+const process = global.process;
 const HTTP_PORT = process.env.HTTP_PORT || 8766;
 const OPENAI_API_URL = 'https://api.openai.com/v1/';
 
@@ -35,8 +36,6 @@ const server = http.createServer((req, res) => {
       console.log('Complete response data:', data);
     });
     openaiRes.pipe(res);
-
-
   });
 
   openaiReq.on('error', (error) => {

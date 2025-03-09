@@ -1,15 +1,19 @@
-const WebSocket = require('ws');
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const utf8 = require('utf8');
+import { WebSocketServer } from 'ws';
+export { WebSocketServer };
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import utf8 from 'utf8';
 
 const WS_PORT = 8765;
 const HTTP_PORT = 8766;
 
-class WebSocketServer {
-  constructor() {
-    this.server = new WebSocket.Server({ port: WS_PORT });
+const process = global.process;
+const Buffer = global.Buffer;
+
+export class CustomWebSocketServer {
+  constructor(port = WS_PORT) {
+    this.server = new WebSocketServer({ port });
     this.connectedSocket = null;
     this.sessions = new Map(); // Store chat sessions
     this.initialize();
@@ -45,34 +49,60 @@ class WebSocketServer {
         throw new Error('Invalid request format');
       }
 
-      // Send the complete message at once
-      this.connectedSocket.send(JSON.stringify({
+      // Create properly formatted message object
+      const requestMessage = {
         type: 'request',
         data: request
-      }));
+      };
 
-      let fullMessage = '';
-      let expectedChunks = 0;
-      let receivedChunks = 0;
-      const chunks = {};
+      // Serialize the message with proper JSON formatting
+      const serializedMessage = JSON.stringify(requestMessage);
+      console.log('Sending message to client:', serializedMessage);
+
+      // Send the properly formatted message
+      this.connectedSocket.send(serializedMessage);
+
+      console.log('Request data:', request);
+      console.log('Connected socket:', this.connectedSocket ? 'Connected' : 'Not connected');
 
       // Set up message handler
+      // Initialize buffers for chunked message handling
+      let messageChunks = [];
+      let expectedTotalChunks = 0;
+      
       const handleMessage = async (message) => {
         try {
-          const data = message instanceof Buffer ? utf8.decode(message.toString('utf8')) : message;
+          // Handle the message safely without using utf8.decode which can cause issues with certain characters
+          const data = message instanceof Buffer ? message.toString('utf8') : message;
+          console.log('Received raw message:', data);
           const jsonObject = JSON.parse(data);
+          console.log('Parsed message:', jsonObject);
 
-          if (jsonObject.type === 'answer') {
-            console.log('Received answer:', jsonObject.text);
+          if (jsonObject.type === 'chunk') {
+            console.log(`Received chunk ${jsonObject.index + 1} of ${jsonObject.total}, length: ${jsonObject.text.length}`);
+            
+            // Store the chunk
+            messageChunks[jsonObject.index] = jsonObject.text;
+            expectedTotalChunks = jsonObject.total;
+            
+            // Check if we have all chunks
+            if (messageChunks.filter(Boolean).length === expectedTotalChunks) {
+              const fullText = messageChunks.join('');
+              console.log('Reconstructed full message from chunks, length:', fullText.length);
+              callback('answer', fullText);
+            }
+          } else if (jsonObject.type === 'answer') {
+            console.log('Received complete answer message, length:', jsonObject.text.length);
+            console.log('Full received payload:', JSON.stringify(jsonObject));
+            console.log('Sending response back...');
             callback('answer', jsonObject.text);
           } else if (jsonObject.type === 'stop') {
             console.log('Received stop signal');
             this.connectedSocket.off('message', handleMessage);
             callback('stop', '');
           }
-        } catch (e) {
-          console.error("Failed to process message:", e);
-          console.error("Message data:", data);
+        } catch (error) {
+          console.error("Failed to process message:", error);
         }
       };
 
@@ -84,8 +114,7 @@ class WebSocketServer {
   }
 }
 
-// Create WebSocket server instance
-const webSocketServer = new WebSocketServer();
+export const webSocketServer = new CustomWebSocketServer();
 
 // Create Express app instance
 const app = express();
@@ -105,30 +134,32 @@ app.use((err, req, res, next) => {
   if (res.headersSent) {
     return next(err);
   }
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Internal server error',
     requestId: req.id
   });
 });
 
-app.use(bodyParser.json({ 
+app.use(bodyParser.json({
   limit: '10mb',
   verify: (req, res, buf) => {
     try {
       JSON.parse(buf.toString());
-    } catch (e) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_) {
       throw new Error('Invalid JSON');
     }
   }
 }));
 
-app.use(bodyParser.urlencoded({ 
-  extended: true, 
+app.use(bodyParser.urlencoded({
+  extended: true,
   limit: '10mb',
   verify: (req, res, buf) => {
     try {
       JSON.parse(buf.toString());
-    } catch (e) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_) {
       throw new Error('Invalid JSON');
     }
   }
@@ -195,6 +226,7 @@ app.post('/v1/chat/completions', async function (req, res) {
         console.log('response:', response);
         console.log("Received text with length:", response.length);
         let deltaContent = '';
+        let result;
 
         if (response.length > 0) {
           result = {

@@ -17,5 +17,6 @@ The extracted answer is then cleaned to a string, which is sent back to the node
 
 ## Core Requirements
 - [x] Maintain the memory bank.
+- [ ] Each time a code file is edited, increase the version and build number of the project and make sure it's displayed in debug console.
 
 ## Project Scope
