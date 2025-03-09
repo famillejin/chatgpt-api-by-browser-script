@@ -11,6 +11,7 @@ class WebSocketServer {
   constructor() {
     this.server = new WebSocket.Server({ port: WS_PORT });
     this.connectedSocket = null;
+    this.sessions = new Map(); // Store chat sessions
     this.initialize();
   }
 
@@ -30,10 +31,19 @@ class WebSocketServer {
 
   async sendRequest(request, callback) {
     if (!this.connectedSocket) {
-      callback('stop', 'api error');
-      console.log('The browser connection has not been established, the request cannot be processed.');
+      const error = {
+        code: 'WEBSOCKET_NOT_CONNECTED',
+        message: 'Browser connection not established'
+      };
+      callback('error', JSON.stringify(error));
       return;
     }
+
+    try {
+      // Validate request
+      if (!request.text || typeof request.text !== 'string') {
+        throw new Error('Invalid request format');
+      }
 
     // Send the complete message at once
     this.connectedSocket.send(JSON.stringify({
