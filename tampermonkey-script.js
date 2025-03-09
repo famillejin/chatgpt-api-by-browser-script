@@ -10,28 +10,27 @@
 
 const log = (...args) => {
     console.log('chatgpt-api-by-browser-script', ...args);
-}
+};
 log('starting');
 
 const WS_URL = `ws://localhost:8765`;
 
 function cleanText(inputText) {
     const invisibleCharsRegex = /[\u200B\u200C\u200D\uFEFF]|[\u0000-\u001F\u007F-\u009F]/g;
-    const cleanedText = inputText.replace(invisibleCharsRegex, '');
-    return cleanedText;
+    return inputText.replace(invisibleCharsRegex, '');
 }
 
 function getTextFromNode(node) {
-    let result = '';
-    if (!node) return result;
+    if (!node) return '';
 
     if (node.classList.contains('invisible')) {
-        return result;
+        return '';
     }
 
+    let result = '';
     const childNodes = node.childNodes;
     for (let i = 0; i < childNodes.length; i++) {
-        let childNode = childNodes[i];
+        const childNode = childNodes[i];
         if (childNode.nodeType === Node.TEXT_NODE) {
             result += childNode.textContent;
         } else if (childNode.nodeType === Node.ELEMENT_NODE) {
@@ -49,7 +48,8 @@ function sleep(time) {
 function debounce(func, delay) {
     let timeout;
     return function() {
-        const context = this, args = arguments;
+        const context = this;
+        const args = arguments;
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(context, args), delay);
     };
@@ -192,7 +192,6 @@ class App {
             }
         }
     }
-
 
     sendHeartbeat() {
         if (this.socket.readyState === WebSocket.OPEN) {
