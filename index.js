@@ -86,21 +86,58 @@ const webSocketServer = new WebSocketServer();
 // Create Express app instance
 const app = express();
 
-// Configure middleware
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
-app.use(cors({
-  origin: '*',
-  methods: ['POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
+// Configure middleware with error handling
+app.use((err, req, res, next) => {
+  console.error('Middleware error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+app.use(bodyParser.json({ 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    try {
+      JSON.parse(buf.toString());
+    } catch (e) {
+      throw new Error('Invalid JSON');
+    }
+  }
 }));
+
+app.use(bodyParser.urlencoded({ 
+  extended: true, 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    try {
+      JSON.parse(buf.toString());
+    } catch (e) {
+      throw new Error('Invalid JSON');
+    }
+  }
+}));
+
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || '*',
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400
+};
+
+app.use(cors(corsOptions));
 
 // Handle preflight requests
 app.options('/v1/chat/completions', (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.status(204).end();
+  try {
+    res.setHeader('Access-Control-Allow-Origin', corsOptions.origin);
+    res.setHeader('Access-Control-Allow-Methods', corsOptions.methods.join(','));
+    res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(','));
+    res.setHeader('Access-Control-Allow-Credentials', corsOptions.credentials.toString());
+    res.setHeader('Access-Control-Max-Age', corsOptions.maxAge.toString());
+    res.status(204).end();
+  } catch (error) {
+    console.error('Preflight request error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Main API endpoint
@@ -230,31 +267,57 @@ app.post('/v1/chat/completions', async function (req, res) {
 });
 
 // Start HTTP server
-const server = app.listen(HTTP_PORT, function () {
-  console.log(`API server running at http://localhost:${HTTP_PORT}/v1/chat/completions`);
-});
+let server;
+try {
+  server = app.listen(HTTP_PORT, function () {
+    console.log(`API server running at http://localhost:${HTTP_PORT}/v1/chat/completions`);
+    console.log(`CORS origin: ${corsOptions.origin}`);
+  });
+} catch (error) {
+  console.error('Failed to start server:', error);
+  process.exit(1);
+}
 
 // Handle server errors
 server.on('error', (error) => {
+  console.error('Server error:', error);
+  
   if (error.code === 'EADDRINUSE') {
     console.error(`Port ${HTTP_PORT} is already in use`);
-    process.exit(1);
-  } else {
-    console.error('Server error:', error);
+  } else if (error.code === 'EACCES') {
+    console.error(`Port ${HTTP_PORT} requires elevated privileges`);
   }
+  
+  process.exit(1);
 });
 
 // Handle process termination
-process.on('SIGTERM', () => {
+const shutdown = (signal) => {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  
   server.close(() => {
-    console.log('Server gracefully terminated');
+    console.log('Server closed');
     process.exit(0);
   });
+
+  // Force shutdown if not completed in 10 seconds
+  setTimeout(() => {
+    console.error('Forcing shutdown...');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+  shutdown('uncaughtException');
 });
 
-process.on('SIGINT', () => {
-  server.close(() => {
-    console.log('Server gracefully terminated');
-    process.exit(0);
-  });
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at:', promise, 'reason:', reason);
+  shutdown('unhandledRejection');
 });
