@@ -45,38 +45,42 @@ class WebSocketServer {
         throw new Error('Invalid request format');
       }
 
-    // Send the complete message at once
-    this.connectedSocket.send(JSON.stringify({
-      type: 'request',
-      data: request
-    }));
+      // Send the complete message at once
+      this.connectedSocket.send(JSON.stringify({
+        type: 'request',
+        data: request
+      }));
 
-    let fullMessage = '';
-    let expectedChunks = 0;
-    let receivedChunks = 0;
-    const chunks = {};
+      let fullMessage = '';
+      let expectedChunks = 0;
+      let receivedChunks = 0;
+      const chunks = {};
 
-    // Set up message handler
-    const handleMessage = async (message) => {
-      try {
-        const data = message instanceof Buffer ? utf8.decode(message.toString('utf8')) : message;
-        const jsonObject = JSON.parse(data);
+      // Set up message handler
+      const handleMessage = async (message) => {
+        try {
+          const data = message instanceof Buffer ? utf8.decode(message.toString('utf8')) : message;
+          const jsonObject = JSON.parse(data);
 
-        if (jsonObject.type === 'answer') {
-          console.log('Received answer:', jsonObject.text);
-          callback('answer', jsonObject.text);
-        } else if (jsonObject.type === 'stop') {
-          console.log('Received stop signal');
-          this.connectedSocket.off('message', handleMessage);
-          callback('stop', '');
+          if (jsonObject.type === 'answer') {
+            console.log('Received answer:', jsonObject.text);
+            callback('answer', jsonObject.text);
+          } else if (jsonObject.type === 'stop') {
+            console.log('Received stop signal');
+            this.connectedSocket.off('message', handleMessage);
+            callback('stop', '');
+          }
+        } catch (e) {
+          console.error("Failed to process message:", e);
+          console.error("Message data:", data);
         }
-      } catch (e) {
-        console.error("Failed to process message:", e);
-        console.error("Message data:", data);
-      }
-    };
+      };
 
-    this.connectedSocket.on('message', handleMessage);
+      this.connectedSocket.on('message', handleMessage);
+    } catch (error) {
+      console.error('Error in sendRequest:', error);
+      callback('error', JSON.stringify({ code: 'INTERNAL_ERROR', message: error.message }));
+    }
   }
 }
 
@@ -158,10 +162,9 @@ app.options('/v1/chat/completions', (req, res) => {
 
 // Main API endpoint
 app.post('/v1/chat/completions', async function (req, res) {
+  const { messages, model, stream, newChat = true } = req.body;
 
-  const { messages, model, stream, newChat = true  } = req.body;
-
-  if(stream){
+  if (stream) {
     console.log('streaming');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Transfer-Encoding', 'chunked');
@@ -170,7 +173,7 @@ app.post('/v1/chat/completions', async function (req, res) {
     res.flushHeaders();
   }
 
-  console.log('request body', req.body)
+  console.log('request body', req.body);
 
   const requestPayload = `
     Now you must play the role of system and answer the user.
@@ -189,19 +192,17 @@ app.post('/v1/chat/completions', async function (req, res) {
     },
     (type, response) => {
       try {
-        //console.log('base64 response:', response);
-        //response = atob(response).trim();
         console.log('response:', response);
         console.log("Received text with length:", response.length);
         let deltaContent = '';
 
-        if (response.length>0) {
-           result = {
+        if (response.length > 0) {
+          result = {
             choices: [{
-                message: { content: response },
-                delta: { content: deltaContent }
+              message: { content: response },
+              delta: { content: deltaContent }
             }]
-          }
+          };
         }
         if (response.length < lastResponse.length) {
           // If response is shorter than lastResponse, something went wrong
@@ -219,8 +220,8 @@ app.post('/v1/chat/completions', async function (req, res) {
           deltaContent = response;
         }
         //lastResponse = response;
-        if(type === 'stop'){
-          if(stream) {
+        if (type === 'stop') {
+          if (stream) {
             // Make sure we send the final chunk if there's content remaining
             if (response !== lastResponse) {
               const chunk = {
@@ -259,7 +260,7 @@ app.post('/v1/chat/completions', async function (req, res) {
             console.log('result:', result.choices[0].message.content);
           }
         } else if (deltaContent) { // Only send chunk if there's actual content
-          if(stream) {
+          if (stream) {
             const chunk = {
               id: 'chatcmpl-' + Date.now(),
               object: 'chat.completion.chunk',
@@ -276,7 +277,7 @@ app.post('/v1/chat/completions', async function (req, res) {
         }
         lastResponse = response;
       } catch (error) {
-        console.log('error', error)
+        console.log('error', error);
       }
     }
   );
