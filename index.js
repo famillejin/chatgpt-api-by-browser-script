@@ -86,10 +86,25 @@ const webSocketServer = new WebSocketServer();
 // Create Express app instance
 const app = express();
 
+// Security headers middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+
 // Configure middleware with error handling
 app.use((err, req, res, next) => {
   console.error('Middleware error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ 
+    error: 'Internal server error',
+    requestId: req.id
+  });
 });
 
 app.use(bodyParser.json({ 
@@ -118,7 +133,8 @@ app.use(bodyParser.urlencoded({
 const corsOptions = {
   origin: process.env.CORS_ORIGIN || '*',
   methods: ['POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+  exposedHeaders: ['X-Request-ID'],
   credentials: true,
   maxAge: 86400
 };
@@ -269,14 +285,25 @@ app.post('/v1/chat/completions', async function (req, res) {
 // Start HTTP server
 let server;
 try {
-  server = app.listen(HTTP_PORT, function () {
+  server = app.listen(HTTP_PORT, '127.0.0.1', function () {
     console.log(`API server running at http://localhost:${HTTP_PORT}/v1/chat/completions`);
     console.log(`CORS origin: ${corsOptions.origin}`);
+    console.log(`Node version: ${process.version}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 } catch (error) {
   console.error('Failed to start server:', error);
   process.exit(1);
 }
+
+// Add health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Handle server errors
 server.on('error', (error) => {
@@ -295,16 +322,29 @@ server.on('error', (error) => {
 const shutdown = (signal) => {
   console.log(`Received ${signal}, shutting down gracefully...`);
   
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
+  // Close WebSocket server first
+  if (webSocketServer) {
+    webSocketServer.server.close(() => {
+      console.log('WebSocket server closed');
+    });
+  }
+
+  // Then close HTTP server
+  if (server) {
+    server.close(() => {
+      console.log('HTTP server closed');
+      process.exit(0);
+    });
+  }
 
   // Force shutdown if not completed in 10 seconds
-  setTimeout(() => {
+  const forceShutdownTimer = setTimeout(() => {
     console.error('Forcing shutdown...');
     process.exit(1);
   }, 10000);
+
+  // Clean up force shutdown timer
+  forceShutdownTimer.unref();
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
